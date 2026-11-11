@@ -1,4 +1,4 @@
-use std::{env, eprintln, fs::{self, OpenOptions}, io::Write, path::{Path, PathBuf}, println};
+use std::{env, eprintln, fs::{self, OpenOptions}, io::{Write}, path::{self, Path, PathBuf}, println};
 
 //Extract path. 
 //Path is borrowed immutable, so using PathBuf
@@ -32,20 +32,83 @@ fn validate_path(path: &Path) -> Result<(), std::io::Error> {
     }
 }
 
-//Backup repo contains:
+//Records existing directories from input path
+fn check_repo_exists(path: &Path) -> Result<PathBuf, std::io::Error> {
+    
+    let mut existed_path = path;
+    loop {
+        if fs::exists(&existed_path)? {
+            return Ok(existed_path.to_path_buf());
+        }
+        match existed_path.parent() {
+            Some(cur_path) => existed_path = cur_path,
+            None => return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "No existing parent directory found")),
+        }
+    }
+}
+
+//Repo cleaning in case of partial initialization
+fn clean_repo(dirs: &[PathBuf], files: &[PathBuf]) -> Result<(), std::io::Error> {
+
+    for path in files {
+        fs::remove_file(&path)?;
+    }
+    for path in dirs.iter().rev() {
+        fs::remove_dir(&path)?;
+    }
+    Ok(())
+}
+
+// Backup repo contains:
 //  1.config file
 //  2.objects/
 //  3.snapshots/
 //  4.tmp/
-fn create_repo(path: &Path) -> Result<(), std::io::Error> {
-    fs::create_dir_all(path)?;
+// Handles partial initialization by cleaning the repo.
+fn create_repo(path: &Path, existed_path: &Path) -> Result<(), std::io::Error> {
+    
+    let mut curr_path = existed_path.to_path_buf();
+    let prefix = path.strip_prefix(&existed_path)
+    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
 
-    fs::create_dir(path.join("objects/"))?;
-    fs::create_dir(path.join("snapshots/"))?;
-    fs::create_dir(path.join("tmp/"))?;
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    let mut files: Vec<PathBuf> = Vec::new();
 
-    let mut file = OpenOptions::new().write(true).create_new(true).open(path.join("config"))?;
-    file.write_all(b"format_version = 1\n")?;
+    let result = (|| -> Result<(), std::io::Error> {
+
+        for component in prefix.components() {
+            curr_path.push(component);
+            fs::create_dir(&curr_path)?;
+            dirs.push(curr_path.clone());
+        }
+        
+        let mut new_mod = path.join("objects/");
+        fs::create_dir(&new_mod)?;
+        dirs.push(new_mod);
+
+        new_mod = path.join("snapshots/");
+        fs::create_dir(&new_mod)?;
+        dirs.push(new_mod);
+
+        new_mod = path.join("tmp/");
+        fs::create_dir(&new_mod)?;
+        dirs.push(new_mod);
+
+        new_mod = path.join("config");
+        let mut file = OpenOptions::new().write(true).create_new(true).open(&new_mod)?;
+        files.push(new_mod);
+        file.write_all(b"format_version = 1\n")?;
+
+        Ok(())
+
+    }) ();
+
+    if let Err(e) = result {
+        if let Err(ee) = clean_repo(&dirs, &files)  {
+            eprintln!("Cleanup also failed: {ee}");   
+        }
+        return Err(e);
+    }
 
     Ok(())
 }
@@ -64,7 +127,14 @@ fn main() {
 
     //check for 'init' cmd
     let path = if args[1] == "init" {
-        extract_repo(&args[2])
+        //convert to absolute path
+        match path::absolute(extract_repo(&args[2])) {
+            Ok(path) => path,
+            Err(e) => {
+                eprintln!("{e}");
+                return;
+            }
+        }
     } else {
         println!("Invalid Arguments.");
         return;
@@ -76,8 +146,17 @@ fn main() {
         return;
     }
 
+    //record existing repo structure beforehand
+    let existed_path = match check_repo_exists(&path) {
+        Ok(curr_path) => curr_path,
+        Err(e) => {
+            eprintln!("{e}");
+            return;
+        }
+    };
+
     //initialize repo
-    if let Err(e) = create_repo(&path) {
+    if let Err(e) = create_repo(&path, &existed_path) {
         eprintln!("{e}");
         return;
     }
