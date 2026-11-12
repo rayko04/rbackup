@@ -25,7 +25,7 @@ pub fn validate_path(path: &Path) -> Result<(), std::io::Error> {
             }
         },
         Ok(false) => Ok(()),
-        Err(e) => return Err(e),
+        Err(e) => Err(e),
     }
 }
 
@@ -34,7 +34,7 @@ pub fn check_repo_exists(path: &Path) -> Result<PathBuf, std::io::Error> {
     
     let mut existed_path = path;
     loop {
-        if fs::exists(&existed_path)? {
+        if fs::exists(existed_path)? {
             return Ok(existed_path.to_path_buf());
         }
         match existed_path.parent() {
@@ -48,10 +48,10 @@ pub fn check_repo_exists(path: &Path) -> Result<PathBuf, std::io::Error> {
 fn clean_repo(dirs: &[PathBuf], files: &[PathBuf]) -> Result<(), std::io::Error> {
 
     for path in files {
-        fs::remove_file(&path)?;
+        fs::remove_file(path)?;
     }
     for path in dirs.iter().rev() {
-        fs::remove_dir(&path)?;
+        fs::remove_dir(path)?;
     }
     Ok(())
 }
@@ -65,7 +65,7 @@ fn clean_repo(dirs: &[PathBuf], files: &[PathBuf]) -> Result<(), std::io::Error>
 pub fn create_repo(path: &Path, existed_path: &Path) -> Result<(), std::io::Error> {
     
     let mut curr_path = existed_path.to_path_buf();
-    let prefix = path.strip_prefix(&existed_path)
+    let prefix = path.strip_prefix(existed_path)
     .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
 
     let mut dirs: Vec<PathBuf> = Vec::new();
