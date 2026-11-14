@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::{entry::{Entry, EntryKind, ManifestEntry, ManifestKind}, scanner::create_obj};
+use crate::{entry::{Entry, EntryKind}, scanner::create_obj, manifest::{ManifestEntry, ManifestKind}};
 
 
 pub fn create_manifest(entries: &[Entry], repo_path: &Path, source_root: &Path) -> Result<Vec<ManifestEntry>, std::io::Error> {

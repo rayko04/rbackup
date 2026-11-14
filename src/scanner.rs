@@ -1,6 +1,6 @@
 use std::{
     format, fs::{
-        self, File, OpenOptions, metadata
+        self, File, OpenOptions,
     }, io::{self, Read, Write}, path::{
         Path, PathBuf, 
     }, println, sync::atomic::{AtomicU64, Ordering},
@@ -71,7 +71,7 @@ pub fn scan_path(root_path: &Path, curr_path: &Path) -> Result<Vec<Entry>, std::
 }
 
 //Create a temporary file
-fn create_tmp_file(repo_path: &Path) -> Result<(PathBuf, File), std::io::Error> {
+pub fn create_tmp_file(repo_path: &Path) -> Result<(PathBuf, File), std::io::Error> {
     let tmp_dir = repo_path.join("tmp/");
 
     loop {
