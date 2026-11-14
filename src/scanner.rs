@@ -1,6 +1,6 @@
 use std::{
     format, fs::{
-        self, File, OpenOptions
+        self, File, OpenOptions, metadata
     }, io::{self, Read, Write}, path::{
         Path, PathBuf, 
     }, println, sync::atomic::{AtomicU64, Ordering},
@@ -24,27 +24,31 @@ pub fn scan_path(root_path: &Path, curr_path: &Path) -> Result<Vec<Entry>, std::
 
     for entry in entries {
         let entry = entry?;
+        let full_path = entry.path();
 
         //evaluate entry path and convert to relative (strip input root path)
-        let entry_path = entry.path().strip_prefix(root_path)
+        let entry_path = full_path.strip_prefix(root_path)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?.to_path_buf();
 
         //evaluate entry kind
         let entry_kind = entry.file_type()?;
-        let (entry_kind, recursive, entry_size) = if entry_kind.is_file() {
+        let (entry_kind, recursive, entry_size, modified) = if entry_kind.is_file() {
 
-            //calculate file size
-            let entry_size = entry.metadata()?.len();
-            (EntryKind::File, false, Some(entry_size))
+            let metadata = entry.metadata()?;
+            (EntryKind::File, false, Some(metadata.len()), metadata.modified().ok())
         } else if entry_kind.is_dir() {
-            (EntryKind::Directory, true, None)
+            let metadata = entry.metadata()?;
+
+            (EntryKind::Directory, true, None, metadata.modified().ok())
         } else if entry_kind.is_symlink() {
+            let metadata = fs::symlink_metadata(&full_path)?;
+
             (EntryKind::Symlink{
-                target : std::fs::read_link(entry.path())?
-                }, false, None)
+                target : std::fs::read_link(&full_path)?
+                }, false, None, metadata.modified().ok())
         } else {
             println!("Special File: {:?} Unsupported", entry.file_name());
-            (EntryKind::Other, false, None)
+            (EntryKind::Other, false, None, None)
         };
 
         //store Entry in output vector
@@ -52,11 +56,12 @@ pub fn scan_path(root_path: &Path, curr_path: &Path) -> Result<Vec<Entry>, std::
             path: entry_path,
             kind: entry_kind,
             size: entry_size,
+            modified
         });
 
         //recursive directory scan, record child after parents
         if recursive {
-            discovered.extend(scan_path(root_path ,&entry.path())?);
+            discovered.extend(scan_path(root_path, &full_path)?);
         }
     }
 
